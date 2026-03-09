@@ -1,0 +1,213 @@
+name: 飞书通知（可复用）
+
+on:
+  workflow_call:
+    inputs:
+      event_name:
+        required: true
+        type: string
+      repo_name:
+        required: true
+        type: string
+      actor:
+        required: true
+        type: string
+      ref_name:
+        required: false
+        type: string
+        default: ''
+      commit_message:
+        required: false
+        type: string
+        default: ''
+      commit_url:
+        required: false
+        type: string
+        default: ''
+      pr_title:
+        required: false
+        type: string
+        default: ''
+      pr_url:
+        required: false
+        type: string
+        default: ''
+      pr_action:
+        required: false
+        type: string
+        default: ''
+      pr_merged:
+        required: false
+        type: string
+        default: 'false'
+      pr_base:
+        required: false
+        type: string
+        default: ''
+    secrets:
+      FEISHU_WEBHOOK_URL:
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 发送 Push 通知
+        if: inputs.event_name == 'push'
+        run: |
+          curl -X POST "${{ secrets.FEISHU_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "msg_type": "interactive",
+              "card": {
+                "header": {
+                  "title": {
+                    "tag": "plain_text",
+                    "content": "📦 ${{ inputs.repo_name }} 有新提交"
+                  },
+                  "template": "blue"
+                },
+                "elements": [
+                  {
+                    "tag": "div",
+                    "fields": [
+                      {
+                        "is_short": true,
+                        "text": {
+                          "tag": "lark_md",
+                          "content": "**分支**\n${{ inputs.ref_name }}"
+                        }
+                      },
+                      {
+                        "is_short": true,
+                        "text": {
+                          "tag": "lark_md",
+                          "content": "**提交人**\n${{ inputs.actor }}"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "tag": "div",
+                    "text": {
+                      "tag": "lark_md",
+                      "content": "**提交信息**\n${{ inputs.commit_message }}"
+                    }
+                  },
+                  {
+                    "tag": "action",
+                    "actions": [
+                      {
+                        "tag": "button",
+                        "text": {
+                          "tag": "plain_text",
+                          "content": "查看提交"
+                        },
+                        "url": "${{ inputs.commit_url }}",
+                        "type": "default"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }'
+
+      - name: 发送 PR 通知
+        if: inputs.event_name == 'pull_request'
+        env:
+          PR_ACTION: ${{ inputs.pr_action }}
+          PR_MERGED: ${{ inputs.pr_merged }}
+        run: |
+          if [ "$PR_ACTION" = "opened" ]; then
+            TITLE="🔀 新 PR 待审查"
+            COLOR="orange"
+            STATUS="新建"
+          elif [ "$PR_ACTION" = "reopened" ]; then
+            TITLE="🔀 PR 已重新打开"
+            COLOR="orange"
+            STATUS="重新打开"
+          elif [ "$PR_MERGED" = "true" ]; then
+            TITLE="✅ PR 已合并"
+            COLOR="green"
+            STATUS="已合并"
+          else
+            TITLE="❌ PR 已关闭"
+            COLOR="red"
+            STATUS="已关闭"
+          fi
+
+          curl -X POST "${{ secrets.FEISHU_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"msg_type\": \"interactive\",
+              \"card\": {
+                \"header\": {
+                  \"title\": {
+                    \"tag\": \"plain_text\",
+                    \"content\": \"$TITLE\"
+                  },
+                  \"template\": \"$COLOR\"
+                },
+                \"elements\": [
+                  {
+                    \"tag\": \"div\",
+                    \"fields\": [
+                      {
+                        \"is_short\": true,
+                        \"text\": {
+                          \"tag\": \"lark_md\",
+                          \"content\": \"**仓库**\n${{ inputs.repo_name }}\"
+                        }
+                      },
+                      {
+                        \"is_short\": true,
+                        \"text\": {
+                          \"tag\": \"lark_md\",
+                          \"content\": \"**状态**\n$STATUS\"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    \"tag\": \"div\",
+                    \"fields\": [
+                      {
+                        \"is_short\": true,
+                        \"text\": {
+                          \"tag\": \"lark_md\",
+                          \"content\": \"**提交人**\n${{ inputs.actor }}\"
+                        }
+                      },
+                      {
+                        \"is_short\": true,
+                        \"text\": {
+                          \"tag\": \"lark_md\",
+                          \"content\": \"**目标分支**\n${{ inputs.pr_base }}\"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    \"tag\": \"div\",
+                    \"text\": {
+                      \"tag\": \"lark_md\",
+                      \"content\": \"**PR 标题**\n${{ inputs.pr_title }}\"
+                    }
+                  },
+                  {
+                    \"tag\": \"action\",
+                    \"actions\": [
+                      {
+                        \"tag\": \"button\",
+                        \"text\": {
+                          \"tag\": \"plain_text\",
+                          \"content\": \"查看 PR\"
+                        },
+                        \"url\": \"${{ inputs.pr_url }}\",
+                        \"type\": \"default\"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }"
