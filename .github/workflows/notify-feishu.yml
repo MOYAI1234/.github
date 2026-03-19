@@ -54,69 +54,68 @@ jobs:
     steps:
       - name: 发送 Push 通知
         if: inputs.event_name == 'push'
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          REPO_NAME: ${{ inputs.repo_name }}
+          REF_NAME: ${{ inputs.ref_name }}
+          ACTOR: ${{ inputs.actor }}
+          COMMIT_MESSAGE: ${{ inputs.commit_message }}
+          COMMIT_URL: ${{ inputs.commit_url }}
         run: |
-          curl -X POST "${{ secrets.FEISHU_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "msg_type": "interactive",
-              "card": {
-                "header": {
-                  "title": {
-                    "tag": "plain_text",
-                    "content": "📦 ${{ inputs.repo_name }} 有新提交"
-                  },
-                  "template": "blue"
+          PAYLOAD=$(jq -n \
+            --arg repo "$REPO_NAME" \
+            --arg branch "$REF_NAME" \
+            --arg actor "$ACTOR" \
+            --arg msg "$COMMIT_MESSAGE" \
+            --arg url "$COMMIT_URL" \
+            '{
+              msg_type: "interactive",
+              card: {
+                header: {
+                  title: { tag: "plain_text", content: ("📦 " + $repo + " 有新提交") },
+                  template: "blue"
                 },
-                "elements": [
+                elements: [
                   {
-                    "tag": "div",
-                    "fields": [
-                      {
-                        "is_short": true,
-                        "text": {
-                          "tag": "lark_md",
-                          "content": "**分支**\n${{ inputs.ref_name }}"
-                        }
-                      },
-                      {
-                        "is_short": true,
-                        "text": {
-                          "tag": "lark_md",
-                          "content": "**提交人**\n${{ inputs.actor }}"
-                        }
-                      }
+                    tag: "div",
+                    fields: [
+                      { is_short: true, text: { tag: "lark_md", content: ("**分支**\n" + $branch) } },
+                      { is_short: true, text: { tag: "lark_md", content: ("**提交人**\n" + $actor) } }
                     ]
                   },
                   {
-                    "tag": "div",
-                    "text": {
-                      "tag": "lark_md",
-                      "content": "**提交信息**\n${{ inputs.commit_message }}"
-                    }
+                    tag: "div",
+                    text: { tag: "lark_md", content: ("**提交信息**\n" + $msg) }
                   },
                   {
-                    "tag": "action",
-                    "actions": [
+                    tag: "action",
+                    actions: [
                       {
-                        "tag": "button",
-                        "text": {
-                          "tag": "plain_text",
-                          "content": "查看提交"
-                        },
-                        "url": "${{ inputs.commit_url }}",
-                        "type": "default"
+                        tag: "button",
+                        text: { tag: "plain_text", content: "查看提交" },
+                        url: $url,
+                        type: "default"
                       }
                     ]
                   }
                 ]
               }
-            }'
+            }')
+          curl -s -X POST "$FEISHU_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
 
       - name: 发送 PR 通知
         if: inputs.event_name == 'pull_request'
         env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          REPO_NAME: ${{ inputs.repo_name }}
+          ACTOR: ${{ inputs.actor }}
+          PR_TITLE: ${{ inputs.pr_title }}
+          PR_URL: ${{ inputs.pr_url }}
           PR_ACTION: ${{ inputs.pr_action }}
           PR_MERGED: ${{ inputs.pr_merged }}
+          PR_BASE: ${{ inputs.pr_base }}
         run: |
           if [ "$PR_ACTION" = "opened" ]; then
             TITLE="🔀 新 PR 待审查"
@@ -136,78 +135,55 @@ jobs:
             STATUS="已关闭"
           fi
 
-          curl -X POST "${{ secrets.FEISHU_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"msg_type\": \"interactive\",
-              \"card\": {
-                \"header\": {
-                  \"title\": {
-                    \"tag\": \"plain_text\",
-                    \"content\": \"$TITLE\"
-                  },
-                  \"template\": \"$COLOR\"
+          PAYLOAD=$(jq -n \
+            --arg title "$TITLE" \
+            --arg color "$COLOR" \
+            --arg repo "$REPO_NAME" \
+            --arg status "$STATUS" \
+            --arg actor "$ACTOR" \
+            --arg base "$PR_BASE" \
+            --arg pr_title "$PR_TITLE" \
+            --arg pr_url "$PR_URL" \
+            '{
+              msg_type: "interactive",
+              card: {
+                header: {
+                  title: { tag: "plain_text", content: $title },
+                  template: $color
                 },
-                \"elements\": [
+                elements: [
                   {
-                    \"tag\": \"div\",
-                    \"fields\": [
-                      {
-                        \"is_short\": true,
-                        \"text\": {
-                          \"tag\": \"lark_md\",
-                          \"content\": \"**仓库**\n${{ inputs.repo_name }}\"
-                        }
-                      },
-                      {
-                        \"is_short\": true,
-                        \"text\": {
-                          \"tag\": \"lark_md\",
-                          \"content\": \"**状态**\n$STATUS\"
-                        }
-                      }
+                    tag: "div",
+                    fields: [
+                      { is_short: true, text: { tag: "lark_md", content: ("**仓库**\n" + $repo) } },
+                      { is_short: true, text: { tag: "lark_md", content: ("**状态**\n" + $status) } }
                     ]
                   },
                   {
-                    \"tag\": \"div\",
-                    \"fields\": [
-                      {
-                        \"is_short\": true,
-                        \"text\": {
-                          \"tag\": \"lark_md\",
-                          \"content\": \"**提交人**\n${{ inputs.actor }}\"
-                        }
-                      },
-                      {
-                        \"is_short\": true,
-                        \"text\": {
-                          \"tag\": \"lark_md\",
-                          \"content\": \"**目标分支**\n${{ inputs.pr_base }}\"
-                        }
-                      }
+                    tag: "div",
+                    fields: [
+                      { is_short: true, text: { tag: "lark_md", content: ("**提交人**\n" + $actor) } },
+                      { is_short: true, text: { tag: "lark_md", content: ("**目标分支**\n" + $base) } }
                     ]
                   },
                   {
-                    \"tag\": \"div\",
-                    \"text\": {
-                      \"tag\": \"lark_md\",
-                      \"content\": \"**PR 标题**\n${{ inputs.pr_title }}\"
-                    }
+                    tag: "div",
+                    text: { tag: "lark_md", content: ("**PR 标题**\n" + $pr_title) }
                   },
                   {
-                    \"tag\": \"action\",
-                    \"actions\": [
+                    tag: "action",
+                    actions: [
                       {
-                        \"tag\": \"button\",
-                        \"text\": {
-                          \"tag\": \"plain_text\",
-                          \"content\": \"查看 PR\"
-                        },
-                        \"url\": \"${{ inputs.pr_url }}\",
-                        \"type\": \"default\"
+                        tag: "button",
+                        text: { tag: "plain_text", content: "查看 PR" },
+                        url: $pr_url,
+                        type: "default"
                       }
                     ]
                   }
                 ]
               }
-            }"
+            }')
+          curl -s -X POST "$FEISHU_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
